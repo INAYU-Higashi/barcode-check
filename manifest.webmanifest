@@ -1,1 +1,9 @@
-{"name":"バーコード照合","short_name":"バーコード照合","start_url":"./","scope":"./","display":"standalone","background_color":"#f2f5f8","theme_color":"#173b63","lang":"ja"}
+{
+  "name": "バーコード照合",
+  "short_name": "バーコード照合",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f5f8",
+  "theme_color": "#17365d",
+  "lang": "ja"
+}
