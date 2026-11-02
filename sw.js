@@ -1,4 +1,4 @@
-const CACHE_NAME = "barcode-check-v6";
+const CACHE_NAME = "barcode-check-v7";
 const BASE = new URL(self.registration.scope);
 const APP_URL = new URL("./", BASE).href;
 const INDEX_URL = new URL("index.html", BASE).href;
