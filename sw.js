@@ -1,84 +1,16 @@
-const CACHE_NAME = "barcode-check-v7";
-const BASE = new URL(self.registration.scope);
-const APP_URL = new URL("./", BASE).href;
-const INDEX_URL = new URL("index.html", BASE).href;
-const MANIFEST_URL = new URL("manifest.webmanifest", BASE).href;
-const LIBRARY_URL = new URL("html5-qrcode.min.js", BASE).href;
-const CDN_URLS = [
-  "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js",
-  "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
+const CACHE_NAME="barcode-check-v8";
+const BASE=new URL(self.registration.scope);
+const APP_URL=new URL("./",BASE).href,INDEX_URL=new URL("index.html",BASE).href,MANIFEST_URL=new URL("manifest.webmanifest",BASE).href;
+const QR_URL=new URL("html5-qrcode.min.js",BASE).href,OCR_URL=new URL("tesseract.min.js",BASE).href;
+const ASSETS=[
+ ["https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js",QR_URL],
+ ["https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js",OCR_URL]
 ];
-
-self.addEventListener("install", event => {
-  event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    // Save the app shell using absolute URLs within this GitHub Pages project.
-    for (const url of [APP_URL, INDEX_URL, MANIFEST_URL]) {
-      try {
-        const response = await fetch(url, { cache: "reload" });
-        if (response.ok) await cache.put(url, response);
-      } catch (e) {}
-    }
-    // Cache the barcode decoder locally for offline use.
-    for (const url of CDN_URLS) {
-      try {
-        const response = await fetch(url, { mode: "cors", cache: "no-store" });
-        if (response.ok) {
-          await cache.put(LIBRARY_URL, response);
-          break;
-        }
-      } catch (e) {}
-    }
-    await self.skipWaiting();
-  })());
-});
-
-self.addEventListener("activate", event => {
-  event.waitUntil((async () => {
-    for (const key of await caches.keys()) {
-      if (key.startsWith("barcode-check-") && key !== CACHE_NAME) {
-        await caches.delete(key);
-      }
-    }
-    await self.clients.claim();
-  })());
-});
-
-self.addEventListener("fetch", event => {
-  const request = event.request;
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin || request.method !== "GET") return;
-
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME);
-
-    // Always serve cached index for offline page navigation, including reloads
-    // and navigation URLs carrying query strings.
-    if (request.mode === "navigate") {
-      const cachedPage = await cache.match(INDEX_URL) || await cache.match(APP_URL);
-      if (cachedPage) return cachedPage;
-      try {
-        const live = await fetch(request);
-        if (live.ok) await cache.put(INDEX_URL, live.clone());
-        return live;
-      } catch (e) {
-        return new Response("アプリ本体がまだ保存されていません。オンラインで一度開き直してください。", {
-          status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" }
-        });
-      }
-    }
-
-    const cached = await cache.match(request, { ignoreSearch: true });
-    if (cached) return cached;
-
-    try {
-      const live = await fetch(request);
-      if (live.ok) await cache.put(request, live.clone());
-      return live;
-    } catch (e) {
-      return new Response("オフラインです。オンラインで再読み込みしてください。", {
-        status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" }
-      });
-    }
-  })());
-});
+self.addEventListener("install",e=>e.waitUntil((async()=>{const c=await caches.open(CACHE_NAME);
+ for(const u of [APP_URL,INDEX_URL,MANIFEST_URL])try{const r=await fetch(u,{cache:"reload"});if(r.ok)await c.put(u,r)}catch(_){}
+ for(const [src,dst] of ASSETS)try{const r=await fetch(src,{mode:"cors",cache:"no-store"});if(r.ok)await c.put(dst,r)}catch(_){}
+ await self.skipWaiting()})()));
+self.addEventListener("activate",e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k.startsWith("barcode-check-")&&k!==CACHE_NAME)await caches.delete(k);await self.clients.claim()})()));
+self.addEventListener("fetch",e=>{const q=e.request,u=new URL(q.url);if(u.origin!==self.location.origin||q.method!=="GET")return;e.respondWith((async()=>{const c=await caches.open(CACHE_NAME);
+ if(q.mode==="navigate"){const p=await c.match(INDEX_URL)||await c.match(APP_URL);if(p)return p;try{return await fetch(q)}catch(_){return new Response("アプリ本体が未保存です。オンラインで一度開いてください。",{status:503})}}
+ const hit=await c.match(q,{ignoreSearch:true});if(hit)return hit;try{const r=await fetch(q);if(r.ok)await c.put(q,r.clone());return r}catch(_){return new Response("オフラインです。オンラインで再読み込みしてください。",{status:503})}})())});
