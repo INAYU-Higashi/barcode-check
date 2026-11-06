@@ -1,4 +1,4 @@
-const CACHE_NAME="barcode-check-v9";
+const CACHE_NAME="barcode-check-v10";
 const BASE=new URL(self.registration.scope);
 const APP_URL=new URL("./",BASE).href,INDEX_URL=new URL("index.html",BASE).href,MANIFEST_URL=new URL("manifest.webmanifest",BASE).href;
 const QR_URL=new URL("html5-qrcode.min.js",BASE).href,OCR_URL=new URL("tesseract.min.js",BASE).href;

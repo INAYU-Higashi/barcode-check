@@ -30,20 +30,28 @@ function stopOcrCamera(){if(ocrStream){ocrStream.getTracks().forEach(t=>t.stop()
 function applyCandidate(i){if(ocrCandidates[i]!==undefined)$(ocrTarget===1?"o1":"o2").value=ocrCandidates[i]}
 function showCandidates(lines){ocrCandidates=lines.filter(x=>x.trim());let box=$("ocrCandidateList");box.innerHTML="";$("ocrCandidates").hidden=!ocrCandidates.length;if(!ocrCandidates.length){$("ocrBusy").textContent="認識できません。明るさやピントを確認してください。";return}ocrCandidates.forEach((v,i)=>{let lab=document.createElement("label"),r=document.createElement("input");r.type="radio";r.name="ocrCandidate";r.value=i;r.style.width="auto";lab.style.cssText="display:flex;padding:8px;border-bottom:1px solid #ddd;word-break:break-word";lab.append(r,document.createTextNode(v));box.append(lab);if(i===0)r.checked=true});applyCandidate(0)}
 function prepareOcrCrop(video,canvas){
-  const vw=video.videoWidth,vh=video.videoHeight,fw=video.clientWidth,fh=video.clientHeight;
-  if(!vw||!vh||!fw||!fh)throw Error("カメラ映像を取得できません");
-  // CSS object-fit:cover で表示されている映像と緑枠の位置を元映像に換算
-  const scale=Math.max(fw/vw,fh/vh),shownW=fw/scale,shownH=fh/scale;
-  const sx=(vw-shownW)/2+shownW*.20,sy=(vh-shownH)/2+shownH*.27;
-  const sw=shownW*.60,sh=shownH*.46,zoom=3;
+  const vw=video.videoWidth,vh=video.videoHeight;
+  const frame=$("ocrCamera").parentElement;
+  const vr=video.getBoundingClientRect(),gr=frame.querySelector(".ocr-guide").getBoundingClientRect();
+  if(!vw||!vh||!vr.width||!vr.height)throw Error("カメラ映像を取得できません");
+  // 緑枠の画面上の位置を、object-fit:cover後の映像から元映像座標へ正確に変換
+  const scale=Math.max(vr.width/vw,vr.height/vh);
+  const renderedW=vw*scale,renderedH=vh*scale;
+  const offsetX=(vr.width-renderedW)/2,offsetY=(vr.height-renderedH)/2;
+  let sx=(gr.left-vr.left-offsetX)/scale;
+  let sy=(gr.top-vr.top-offsetY)/scale;
+  let sw=gr.width/scale,sh=gr.height/scale;
+  sx=Math.max(0,Math.min(vw-1,sx));sy=Math.max(0,Math.min(vh-1,sy));
+  sw=Math.max(1,Math.min(vw-sx,sw));sh=Math.max(1,Math.min(vh-sy,sh));
+  const zoom=4;
   canvas.width=Math.max(1,Math.round(sw*zoom));canvas.height=Math.max(1,Math.round(sh*zoom));
   const ctx=canvas.getContext("2d",{willReadFrequently:true});
   ctx.drawImage(video,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
-  // グレースケール化とコントラスト補正
+  // グレースケール化＋コントラスト補正
   const image=ctx.getImageData(0,0,canvas.width,canvas.height),d=image.data;
   for(let i=0;i<d.length;i+=4){
     const y=.299*d[i]+.587*d[i+1]+.114*d[i+2];
-    const adjusted=Math.max(0,Math.min(255,(y-105)*1.65+128));
+    const adjusted=Math.max(0,Math.min(255,(y-100)*1.8+128));
     d[i]=d[i+1]=d[i+2]=adjusted;
   }
   ctx.putImageData(image,0,0);
@@ -67,7 +75,7 @@ async function captureOcr(){
     }
     $("ocrBusy").textContent="文字認識中…";
     const r=await ocrWorker.recognize(c);
-    const lines=(r.data.text||"").split(/\\r?\\n/)
+    const lines=(r.data.text||"").split(/\r?\n/)
       .map(x=>x.replace(/[^0-9A-Za-z!#$%&'()*+,-./:;<=>?@[\\]^_`{|}~]/g,"").trim())
       .filter(Boolean);
     showCandidates(lines);
