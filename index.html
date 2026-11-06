@@ -29,7 +29,51 @@ async function startOcrCamera(){try{ocrStream=await navigator.mediaDevices.getUs
 function stopOcrCamera(){if(ocrStream){ocrStream.getTracks().forEach(t=>t.stop());ocrStream=null}$("ocrCamera").srcObject=null}
 function applyCandidate(i){if(ocrCandidates[i]!==undefined)$(ocrTarget===1?"o1":"o2").value=ocrCandidates[i]}
 function showCandidates(lines){ocrCandidates=lines.filter(x=>x.trim());let box=$("ocrCandidateList");box.innerHTML="";$("ocrCandidates").hidden=!ocrCandidates.length;if(!ocrCandidates.length){$("ocrBusy").textContent="認識できません。明るさやピントを確認してください。";return}ocrCandidates.forEach((v,i)=>{let lab=document.createElement("label"),r=document.createElement("input");r.type="radio";r.name="ocrCandidate";r.value=i;r.style.width="auto";lab.style.cssText="display:flex;padding:8px;border-bottom:1px solid #ddd;word-break:break-word";lab.append(r,document.createTextNode(v));box.append(lab);if(i===0)r.checked=true});applyCandidate(0)}
-async function captureOcr(){let v=$("ocrCamera");if(!ocrStream||!v.videoWidth){$("ocrBusy").textContent="先にカメラ起動を押してください。";return}let c=$("ocrCanvas");c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);$("ocrBusy").textContent="文字認識中…";try{if(!window.Tesseract)throw Error("OCRライブラリ未読込。オンラインで再読み込みしてください。");if(!ocrWorker)ocrWorker=await Tesseract.createWorker("jpn+eng",1,{logger:m=>{if(m.status==="recognizing text")$("ocrBusy").textContent="文字認識中 "+Math.round((m.progress||0)*100)+"%"}});let r=await ocrWorker.recognize(c);showCandidates((r.data.text||"").split(/\\r?\\n/).map(x=>x.trim()));$("ocrBusy").textContent="候補を選択すると照合欄に反映されます。"}catch(e){$("ocrBusy").textContent="OCR失敗："+String(e)}}
+function prepareOcrCrop(video,canvas){
+  const vw=video.videoWidth,vh=video.videoHeight,fw=video.clientWidth,fh=video.clientHeight;
+  if(!vw||!vh||!fw||!fh)throw Error("カメラ映像を取得できません");
+  // CSS object-fit:cover で表示されている映像と緑枠の位置を元映像に換算
+  const scale=Math.max(fw/vw,fh/vh),shownW=fw/scale,shownH=fh/scale;
+  const sx=(vw-shownW)/2+shownW*.20,sy=(vh-shownH)/2+shownH*.27;
+  const sw=shownW*.60,sh=shownH*.46,zoom=3;
+  canvas.width=Math.max(1,Math.round(sw*zoom));canvas.height=Math.max(1,Math.round(sh*zoom));
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
+  ctx.drawImage(video,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
+  // グレースケール化とコントラスト補正
+  const image=ctx.getImageData(0,0,canvas.width,canvas.height),d=image.data;
+  for(let i=0;i<d.length;i+=4){
+    const y=.299*d[i]+.587*d[i+1]+.114*d[i+2];
+    const adjusted=Math.max(0,Math.min(255,(y-105)*1.65+128));
+    d[i]=d[i+1]=d[i+2]=adjusted;
+  }
+  ctx.putImageData(image,0,0);
+}
+async function captureOcr(){
+  let v=$("ocrCamera");
+  if(!ocrStream||!v.videoWidth){$("ocrBusy").textContent="先にカメラ起動を押してください。";return}
+  $("ocrBusy").textContent="画像を調整しています…";
+  try{
+    if(!window.Tesseract)throw Error("OCRライブラリ未読込。オンラインで再読み込みしてください。");
+    const c=$("ocrCanvas");prepareOcrCrop(v,c);
+    if(!ocrWorker){
+      ocrWorker=await Tesseract.createWorker("eng",1,{logger:m=>{
+        if(m.status==="recognizing text")$("ocrBusy").textContent="文字認識中 "+Math.round((m.progress||0)*100)+"%";
+      }});
+      await ocrWorker.setParameters({
+        tessedit_char_whitelist:"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+        tessedit_pageseg_mode:"6",
+        preserve_interword_spaces:"1"
+      });
+    }
+    $("ocrBusy").textContent="文字認識中…";
+    const r=await ocrWorker.recognize(c);
+    const lines=(r.data.text||"").split(/\\r?\\n/)
+      .map(x=>x.replace(/[^0-9A-Za-z!#$%&'()*+,-./:;<=>?@[\\]^_`{|}~]/g,"").trim())
+      .filter(Boolean);
+    showCandidates(lines);
+    $("ocrBusy").textContent=lines.length?"候補を選択してください。":"認識できません。ピント・明るさ・文字の大きさを確認してください。";
+  }catch(e){$("ocrBusy").textContent="OCR失敗："+String(e)}
+}
 $("barcodeMode").onclick=()=>setMode("barcode");$("ocrMode").onclick=()=>setMode("ocr");$("start").onclick=start;$("stop").onclick=stop;$("check").onclick=check;$("reset").onclick=()=>{$("c1").value="";$("c2").value="";target=1;step();msg("","待機中","次の照合を開始できます")};
 $("ocrCameraStart").onclick=startOcrCamera;$("ocrCameraStop").onclick=stopOcrCamera;$("ocrCapture").onclick=captureOcr;$("ocrCandidateList").onchange=e=>{if(e.target.name==="ocrCandidate")applyCandidate(Number(e.target.value))};$("ocrNext").onclick=()=>{if(!$("o1").value.trim()){msg("ng","1回目未入力","先に撮影して候補を選択してください");return}ocrTarget=2;$("ocrCandidates").hidden=true;$("ocrStep").textContent="② 文字・数字2を撮影してください";$("ocrBusy").textContent="2回目を撮影してください。"};$("ocrCheck").onclick=()=>record($("o1").value,$("o2").value,"文字OCR");$("ocrReset").onclick=()=>{$("o1").value="";$("o2").value="";ocrTarget=1;$("ocrCandidates").hidden=true;$("ocrCandidateList").innerHTML="";$("ocrBusy").textContent="";$("ocrStep").textContent="① 文字・数字1を撮影してください";stopOcrCamera();msg("","待機中","次の照合を開始できます")};
 $("keep").onclick=()=>{localStorage.setItem("bc_worker",$("worker").value);localStorage.setItem("bc_keep","1");msg("","作業者IDを保持","次回起動時も引き継ぎます")};$("clear").onclick=()=>{$("worker").value="";localStorage.removeItem("bc_worker");localStorage.removeItem("bc_keep")};if(localStorage.getItem("bc_keep")==="1")$("worker").value=localStorage.getItem("bc_worker")||"";
