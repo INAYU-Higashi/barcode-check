@@ -8,7 +8,7 @@
 <section class="box"><div class="mode"><button id="barcodeMode" class="selected">バーコード照合</button><button id="ocrMode" class="sub">文字・数字OCR照合</button></div>
 <div id="barcodePanel"><b id="step">① バーコード1を読み取ってください</b><div id="reader"></div><button id="start">カメラ起動</button><button id="stop" class="sub" disabled>停止</button><label>バーコード1</label><input id="c1"><label>バーコード2</label><input id="c2"><button id="check">照合</button><button id="reset" class="sub">次の照合</button></div>
 <div id="ocrPanel" hidden><b id="ocrStep">① 文字・数字1を撮影してください</b><div class="ocr-frame"><video id="ocrCamera" playsinline autoplay muted></video><div class="ocr-guide"></div></div><p class="hint">緑枠内に英数字・半角記号を合わせてください。</p><div><button id="ocrCameraStart">カメラ起動</button><button id="ocrCapture">撮影して文字認識</button><button id="ocrCameraStop" class="sub">カメラ停止</button></div><canvas id="ocrCanvas" hidden></canvas><p id="ocrBusy" class="hint"></p><div id="ocrCandidates" class="box" hidden><b>認識した文字（候補を選択）</b><div id="ocrCandidateList"></div></div><label>文字・数字1（選択結果）</label><textarea id="o1" rows="2"></textarea><button id="ocrNext">1回目を確定して2回目へ</button><label>文字・数字2（選択結果）</label><textarea id="o2" rows="2"></textarea><button id="ocrCheck">文字を照合</button><button id="ocrReset" class="sub">次の照合</button><p class="hint">カメラで撮影し、認識候補を選ぶと照合欄に反映されます。</p></div>
-<div id="status">待機中</div><p id="msg" class="hint">初回はオンラインで読み取りエンジンを読み込んでください。</p></section>
+<div id="status">待機中</div><p id="msg" class="hint">初回はオンラインで必要ファイルを保存してください。</p></section>
 <section class="box"><h2>履歴（最新10件）</h2><button id="export">CSVを書き出す</button><button id="importBtn" class="sub">CSVを取り込む</button><input id="file" type="file" accept=".csv,text/csv" hidden><p class="hint">履歴は端末内に保存。CSVを共有し、受け取った側で取り込めます。</p><div style="overflow-x:auto"><table><thead><tr><th>日時</th><th>方式</th><th>作業者</th><th>1回目</th><th>2回目</th><th>判定</th></tr></thead><tbody id="hist"></tbody></table></div></section>
 <script src="./html5-qrcode.min.js"></script><script src="./tesseract.min.js"></script>
 <script>
@@ -64,7 +64,7 @@ async function captureOcr(){
     if(!window.Tesseract)throw Error("OCRライブラリ未読込。オンラインで再読み込みしてください。");
     const c=$("ocrCanvas");prepareOcrCrop(v,c);
     if(!ocrWorker){
-      ocrWorker=await Tesseract.createWorker("eng",1,{logger:m=>{
+      ocrWorker=await Tesseract.createWorker("eng",1,{workerPath:"./worker.min.js",corePath:"./",langPath:"./",cacheMethod:"none",logger:m=>{
         if(m.status==="recognizing text")$("ocrBusy").textContent="文字認識中 "+Math.round((m.progress||0)*100)+"%";
       }});
       await ocrWorker.setParameters({
