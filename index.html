@@ -64,7 +64,7 @@ async function captureOcr(){
     if(!window.Tesseract)throw Error("OCRライブラリ未読込。オンラインで再読み込みしてください。");
     const c=$("ocrCanvas");prepareOcrCrop(v,c);
     if(!ocrWorker){
-      ocrWorker=await Tesseract.createWorker("eng",1,{workerPath:"./worker.min.js",corePath:"./",langPath:"./",cacheMethod:"none",logger:m=>{
+      ocrWorker=await Tesseract.createWorker("eng",1,{workerPath:"./worker.min.js",corePath:"./tesseract-core-simd-lstm.wasm.js",langPath:"./",cacheMethod:"none",logger:m=>{
         if(m.status==="recognizing text")$("ocrBusy").textContent="文字認識中 "+Math.round((m.progress||0)*100)+"%";
       }});
       await ocrWorker.setParameters({
