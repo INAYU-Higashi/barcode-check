@@ -1,4 +1,4 @@
-const CACHE_NAME="barcode-check-v12-offline";
+const CACHE_NAME="barcode-check-v13-offline";
 const BASE=new URL(self.registration.scope);
 const local=(p)=>new URL(p,BASE).href;
 const ASSETS=[

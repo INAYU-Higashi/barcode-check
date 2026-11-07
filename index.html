@@ -61,19 +61,30 @@ async function captureOcr(){
   if(!ocrStream||!v.videoWidth){$("ocrBusy").textContent="先にカメラ起動を押してください。";return}
   $("ocrBusy").textContent="画像を調整しています…";
   try{
+    await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,30)));
     if(!window.Tesseract)throw Error("OCRライブラリ未読込。オンラインで再読み込みしてください。");
     const c=$("ocrCanvas");prepareOcrCrop(v,c);
+    $("ocrBusy").textContent="OCRエンジンを確認しています…";
+    await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,30)));
     if(!ocrWorker){
-      ocrWorker=await Tesseract.createWorker("eng",1,{workerPath:"./worker.min.js",corePath:"./tesseract-core-simd-lstm.wasm.js",langPath:"./",cacheMethod:"none",logger:m=>{
-        if(m.status==="recognizing text")$("ocrBusy").textContent="文字認識中 "+Math.round((m.progress||0)*100)+"%";
+      $("ocrBusy").textContent="OCRエンジンを起動しています…（初回は時間がかかります）";
+      const workerPromise=Tesseract.createWorker("eng",1,{workerPath:"./worker.min.js",corePath:"./tesseract-core-simd-lstm.wasm.js",langPath:"./",cacheMethod:"none",logger:m=>{
+        const pct=Math.round((m.progress||0)*100);
+        if(m.status==="recognizing text")$("ocrBusy").textContent="文字認識中 "+pct+"%";
+        else if(m.status)$("ocrBusy").textContent="OCR準備中："+m.status+(m.progress?" "+pct+"%":"");
       }});
+      let timeoutId;
+      try{
+        ocrWorker=await Promise.race([workerPromise,new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(Error("OCRエンジンの起動が45秒以内に完了しません。オンラインで再読み込みし、初回データ取得後に再試行してください。")),45000)})]);
+      }finally{clearTimeout(timeoutId)}
       await ocrWorker.setParameters({
         tessedit_char_whitelist:"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
         tessedit_pageseg_mode:"6",
         preserve_interword_spaces:"1"
       });
     }
-    $("ocrBusy").textContent="文字認識中…";
+    $("ocrBusy").textContent="文字認識を開始しています…";
+    await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,20)));
     const r=await ocrWorker.recognize(c);
     const lines=(r.data.text||"").split(/\r?\n/)
       .map(x=>x.replace(/[^0-9A-Za-z!#$%&'()*+,-./:;<=>?@[\\]^_`{|}~]/g,"").trim())
