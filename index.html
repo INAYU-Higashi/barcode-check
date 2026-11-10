@@ -6,7 +6,7 @@
 <h1>バーコード・文字照合</h1>
 <section class="box"><label>作業者ID</label><input id="worker" placeholder="作業者IDを入力／読み取り"><button id="keep" class="sub">IDを保持</button><button id="clear" class="sub">IDをクリア</button></section>
 <section class="box"><div class="mode"><button id="barcodeMode" class="selected">バーコード照合</button><button id="ocrMode" class="sub">文字・数字OCR照合</button></div>
-<div id="barcodePanel"><b id="step">① バーコード1を読み取ってください</b><div id="reader"></div><button id="start">カメラ起動</button><button id="stop" class="sub" disabled>停止</button><label>バーコード1</label><input id="c1"><label>バーコード2</label><input id="c2"><button id="check">照合</button><button id="reset" class="sub">次の照合</button></div>
+<div id="barcodePanel"><b id="step">① バーコード1を読み取ってください</b><div id="reader"></div><button id="start">カメラ起動</button><button id="readStart" disabled>読み取り開始</button><button id="stop" class="sub" disabled>停止</button><label>バーコード1</label><input id="c1"><label>バーコード2</label><input id="c2"><button id="check">照合</button><button id="reset" class="sub">次の照合</button></div>
 <div id="ocrPanel" hidden><b id="ocrStep">① 文字・数字1を撮影してください</b><div class="ocr-frame"><video id="ocrCamera" playsinline autoplay muted></video><div class="ocr-guide"></div></div><p class="hint">緑枠内に英数字・半角記号を合わせてください。</p><div><button id="ocrCameraStart">カメラ起動</button><button id="ocrCapture">撮影して文字認識</button><button id="ocrCameraStop" class="sub">カメラ停止</button></div><canvas id="ocrCanvas" hidden></canvas><p id="ocrBusy" class="hint"></p><div id="ocrCandidates" class="box" hidden><b>認識した文字（候補を選択）</b><div id="ocrCandidateList"></div></div><label>文字・数字1（選択結果）</label><textarea id="o1" rows="2"></textarea><button id="ocrNext">1回目を確定して2回目へ</button><label>文字・数字2（選択結果）</label><textarea id="o2" rows="2"></textarea><button id="ocrCheck">文字を照合</button><button id="ocrReset" class="sub">次の照合</button><p class="hint">カメラで撮影し、認識候補を選ぶと照合欄に反映されます。</p></div>
 <div id="status">待機中</div><p id="msg" class="hint">初回はオンラインで読み取りエンジンを読み込んでください。</p></section>
 <section class="box"><h2>履歴（最新10件）</h2><button id="export">CSVを書き出す</button><button id="importBtn" class="sub">CSVを取り込む</button><input id="file" type="file" accept=".csv,text/csv" hidden><p class="hint">履歴は端末内に保存。CSVを共有し、受け取った側で取り込めます。</p><div style="overflow-x:auto"><table><thead><tr><th>日時</th><th>方式</th><th>作業者</th><th>1回目</th><th>2回目</th><th>判定</th></tr></thead><tbody id="hist"></tbody></table></div></section>
@@ -14,46 +14,47 @@
 <script>
 (()=>{
 const $=id=>document.getElementById(id),K="bc_records_v1";let data=[];try{data=JSON.parse(localStorage.getItem(K)||"[]")}catch(e){}
-let qr=null,running=false,target=1,ocrTarget=1,ocrWorker=null,ocrStream=null,ocrCandidates=[];
+let qr=null,running=false,cameraReady=false,target=1,ocrTarget=1,ocrWorker=null,ocrStream=null,ocrCandidates=[];
 function save(){localStorage.setItem(K,JSON.stringify(data));draw()}
 function draw(){$("hist").innerHTML="";data.slice(-10).reverse().forEach(x=>{let tr=document.createElement("tr");[x.t,x.m||"バーコード",x.w,x.a,x.b,x.r].forEach(v=>{let td=document.createElement("td");td.textContent=v??"";tr.append(td)});$("hist").append(tr)})}
 function msg(c,s,m){$("status").className=c;$("status").textContent=s;$("msg").textContent=m||""}
 function step(){$("step").textContent=target===1?"① バーコード1を読み取ってください":"② バーコード2を読み取ってください"}
-async function stop(){if(qr&&running){try{await qr.stop()}catch(e){}running=false}$("start").disabled=false;$("stop").disabled=true}
+async function stop(){
+ if(qr&&(running||cameraReady)){try{await qr.stop()}catch(e){}}
+ running=false;cameraReady=false;
+ $("start").disabled=false;$("readStart").disabled=true;$("stop").disabled=true;
+}
 function scanned(v){if(target===1){$("c1").value=v;target=2;step();stop().then(()=>msg("","バーコード1 読取完了","2回目は再度カメラ起動を押してください"))}else{$("c2").value=v;target=1;step();stop().then(check)}}
 async function start(){
  if(!window.Html5Qrcode){msg("ng","読取エンジン未読込","オンラインで再読み込みしてください");return}
  try{
   if(!qr){
    const formats=[
-    Html5QrcodeSupportedFormats.QR_CODE,
-    Html5QrcodeSupportedFormats.CODE_128,
-    Html5QrcodeSupportedFormats.CODE_39,
-    Html5QrcodeSupportedFormats.CODE_93,
-    Html5QrcodeSupportedFormats.CODABAR,
-    Html5QrcodeSupportedFormats.EAN_13,
-    Html5QrcodeSupportedFormats.EAN_8,
-    Html5QrcodeSupportedFormats.UPC_A,
-    Html5QrcodeSupportedFormats.UPC_E,
-    Html5QrcodeSupportedFormats.ITF,
-    Html5QrcodeSupportedFormats.DATA_MATRIX,
-    Html5QrcodeSupportedFormats.PDF_417,
+    Html5QrcodeSupportedFormats.QR_CODE,Html5QrcodeSupportedFormats.CODE_128,
+    Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.CODE_93,
+    Html5QrcodeSupportedFormats.CODABAR,Html5QrcodeSupportedFormats.EAN_13,
+    Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,
+    Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.ITF,
+    Html5QrcodeSupportedFormats.DATA_MATRIX,Html5QrcodeSupportedFormats.PDF_417,
     Html5QrcodeSupportedFormats.AZTEC
    ].filter(x=>x!==undefined);
    qr=new Html5Qrcode("reader",{formatsToSupport:formats,verbose:false});
   }
-  await qr.start(
-   {facingMode:"environment"},
-   {fps:12,qrbox:(w,h)=>({
-    width:Math.max(120,Math.floor(w*.92)),
-    height:Math.max(70,Math.floor(h*.36))
-   }),aspectRatio:2.4},
-   scanned,
-   ()=>{}
-  );
-  running=true;$("start").disabled=true;$("stop").disabled=false;
-  msg("","カメラ読取中","バーコード全体を横長の読み取り枠内に合わせてください");
- }catch(e){msg("ng","カメラ起動失敗",String(e))}
+  $("start").disabled=true;
+  msg("","カメラを起動しています…","起動後、「読み取り開始」を押してください");
+  await qr.start({facingMode:"environment"},
+   {fps:12,qrbox:(w,h)=>({width:Math.max(120,Math.floor(w*.92)),height:Math.max(70,Math.floor(h*.36))}),aspectRatio:2.4},
+   scanned,()=>{});
+  cameraReady=true;
+  if(typeof qr.pause==="function")qr.pause(true);
+  $("readStart").disabled=false;$("stop").disabled=false;
+  msg("","カメラ起動完了","バーコードを合わせて「読み取り開始」を押してください");
+ }catch(e){$("start").disabled=false;$("readStart").disabled=true;$("stop").disabled=true;msg("ng","カメラ起動失敗",String(e))}
+}
+function beginReading(){
+ if(!qr||!cameraReady){msg("ng","先にカメラを起動してください");return}
+ try{if(typeof qr.resume==="function")qr.resume();running=true;$("readStart").disabled=true;msg("","バーコード読取中","バーコード全体を横長の枠内に合わせてください")}
+ catch(e){msg("ng","読み取り開始失敗",String(e))}
 }
 function record(a,b,m){let w=$("worker").value.trim(),aa=a.trim(),bb=b.trim();if(!w||!aa||!bb){msg("ng","入力不足","作業者IDと2つの読み取り結果を確認してください");return}let ok=aa===bb;data.push({t:new Date().toLocaleString("ja-JP"),w,a:aa,b:bb,r:ok?"OK":"NG",m});save();msg(ok?"ok":"ng",ok?"OK":"NG",ok?"完全一致":"不一致")}
 function check(){record($("c1").value,$("c2").value,"バーコード")}
@@ -115,7 +116,7 @@ async function captureOcr(){
     $("ocrBusy").textContent=lines.length?"候補を選択してください。":"認識できません。ピント・明るさ・文字の大きさを確認してください。";
   }catch(e){$("ocrBusy").textContent="OCR失敗："+String(e)}
 }
-$("barcodeMode").onclick=()=>setMode("barcode");$("ocrMode").onclick=()=>setMode("ocr");$("start").onclick=start;$("stop").onclick=stop;$("check").onclick=check;$("reset").onclick=()=>{$("c1").value="";$("c2").value="";target=1;step();msg("","待機中","次の照合を開始できます")};
+$("barcodeMode").onclick=()=>setMode("barcode");$("ocrMode").onclick=()=>setMode("ocr");$("start").onclick=start;$("readStart").onclick=beginReading;$("stop").onclick=stop;$("check").onclick=check;$("reset").onclick=()=>{$("c1").value="";$("c2").value="";target=1;step();msg("","待機中","次の照合を開始できます")};
 $("ocrCameraStart").onclick=startOcrCamera;$("ocrCameraStop").onclick=stopOcrCamera;$("ocrCapture").onclick=captureOcr;$("ocrCandidateList").onchange=e=>{if(e.target.name==="ocrCandidate")applyCandidate(Number(e.target.value))};$("ocrNext").onclick=()=>{if(!$("o1").value.trim()){msg("ng","1回目未入力","先に撮影して候補を選択してください");return}ocrTarget=2;$("ocrCandidates").hidden=true;$("ocrStep").textContent="② 文字・数字2を撮影してください";$("ocrBusy").textContent="2回目を撮影してください。"};$("ocrCheck").onclick=()=>record($("o1").value,$("o2").value,"文字OCR");$("ocrReset").onclick=()=>{$("o1").value="";$("o2").value="";ocrTarget=1;$("ocrCandidates").hidden=true;$("ocrCandidateList").innerHTML="";$("ocrBusy").textContent="";$("ocrStep").textContent="① 文字・数字1を撮影してください";stopOcrCamera();msg("","待機中","次の照合を開始できます")};
 $("keep").onclick=()=>{localStorage.setItem("bc_worker",$("worker").value);localStorage.setItem("bc_keep","1");msg("","作業者IDを保持","次回起動時も引き継ぎます")};$("clear").onclick=()=>{$("worker").value="";localStorage.removeItem("bc_worker");localStorage.removeItem("bc_keep")};if(localStorage.getItem("bc_keep")==="1")$("worker").value=localStorage.getItem("bc_worker")||"";
 function cell(s){return '"'+String(s??"").replace(/"/g,'""')+'"'}function download(f){let u=URL.createObjectURL(f),a=document.createElement("a");a.href=u;a.download=f.name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500)}
